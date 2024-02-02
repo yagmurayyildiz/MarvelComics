@@ -1,0 +1,19 @@
+﻿@model IEnumerable<MarvelComics.Core.Models.ComicDTO>
+
+<div class="row mt-2">
+    @if (Model != null && Model.Count() > 0)
+    {
+        foreach (var item in Model)
+        {
+            <div class="col-md-3 mt-3">
+                <div class="card">
+                    <img src="@item.ThumbnailUrl" class="card-img-top" alt="">
+                    <div class="card-body">
+                        <h5 class="card-title">@item.Title</h5>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+</div>

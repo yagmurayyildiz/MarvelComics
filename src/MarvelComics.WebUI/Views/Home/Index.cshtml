@@ -1,0 +1,237 @@
+﻿@model MarvelComics.WebUI.Models.SearchViewModel
+@{
+    ViewBag.Title = "Home Page";
+}
+<style>
+    .card-img-top {
+        width: auto; /* Reset width to auto */
+        height: auto; /* Reset height to auto */
+        max-width: 100%; /* Ensure it doesn’t exceed the width of the card */
+        margin-left: auto; /* Center the image horizontally */
+        margin-right: auto; /* Center the image horizontally */
+    }
+</style>
+<main>
+    <section class="row">
+        <p class="lead">Start typing character name to search comics</p>
+    </section>
+
+    <div class="row">
+        @*Form will submit on keyup event of searchCharacterBy input with javascript*@
+        @using (Ajax.BeginForm("Search", "Home",
+            new AjaxOptions
+            {
+                HttpMethod = "POST",
+                InsertionMode = InsertionMode.Replace,
+                UpdateTargetId = "characterSearchResults",
+                OnBegin = "loadSpinnerToCharacterSearchResults",
+                OnSuccess = "showCharacterSearchResults",
+                OnFailure = "clearCharacterSearchResults"
+            },
+            new { @id = "characterSearchForm" }))
+        {
+            @Html.AntiForgeryToken() // Creates a token to send controller, controller will check this token to make sure request coming from this view
+            @Html.ValidationSummary(false, "", new { @class = "text-danger" }) // Automatically displays validation messages sent by controller
+
+            // On submit of the form Ajax will send the value of this input automatically and fill the parameter with same name in target
+            // Browser automatically blocks form submission for fields with Required attribute, on mouse hover pops up a message and
+            // if user trys to submit for will change the css of this field and ask user to fill in.
+            // In our form since we don't use an outside element like button for form submission, we have to add an extra check for if input empty,
+            // since user will in the input while submitting form browser won't validate the input. Its purpose in our form to showcase html attributes
+            // and have an extra client side validation
+            @Html.TextBoxFor(
+                m => m.SearchCharacterBy,
+                new { @class = "form-control", @placeHolder = "Character", @id = "searchCharacterBy", @required = "required" })
+
+        }
+    </div>
+    <div class="row">
+        <div class="col-md-4">
+            <div id="characterSearchResults" class="dropdown-menu">
+                @* Found character results, will be loaded here *@
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-5">
+        <div class="row" id="comicSearchOptions" style="display:none">
+            <div class="col-sm-3">
+                <div class="row">
+                    <div class="col-4">
+                        <label for="orderBy" class="col-form-label">Order By</label>
+                    </div>
+                    <div class="col-8">
+                        <select class="form-select" id="orderBy">
+                            <option value="0">Title</option>
+                            <option value="1" selected>Title Desc</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-3">
+                <div class="row">
+                    <div class="col-4">
+                        <label for="pageSize" class="col-form-label">Page Size</label>
+                    </div>
+                    <div class="col-8">
+                        <select class="form-select" id="pageSize">
+                            <option value="8">8</option>
+                            <option value="16" selected>16</option>
+                            <option value="24">24</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-3">
+                <div class="row">
+                    <div class="col-8">
+                        <input type="text" id="filterBy" placeholder="Search in comics" class="form-control" />
+                    </div>
+                    <div class="col-4">
+                        <button id="filterBySubmit" class="btn btn-primary btn-md">Search</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="comicSearchResults">
+            @* Found comic results, will be loaded here *@
+        </div>
+
+        <div id="comicSearchResultsSpinner"  class="mt-2 text-center"></div>
+        <div class="mt-2 text-center">
+            <button id="loadMore" class="btn btn-primary btn-md" style="display:none">Load more</button>
+        </div>
+    </div>
+</main>
+
+@*This section will be rendered in Layout where it's defined*@
+@section scripts{
+    @*creates a timer to make sure user stopped typing and submits to characterSearchForm*@
+    <script>
+        //creating a 1 second timer to make sure user stoped timing
+        var typingTimer;
+        var doneTypingInterval = 1000; // 1 second
+
+        //Triggering when user stop typing character name,
+        //if it is not triggered again by the timer reachs doneTypingInterval value,
+        //it will submit the characterSearchForm
+        $('#searchCharacterBy').on('keyup', function () {
+            if ($('#searchCharacterBy').val().trim()) {
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(function () {
+                    $('#characterSearchForm').submit();
+                }, doneTypingInterval);
+            }
+            else {
+                clearCharacterSearchResults();
+            }
+        });
+
+        //resets timer and shows spinner when user starts typing
+        $('#searchCharacterBy').on('keydown', function () {
+            clearTimeout(typingTimer);
+            loadSpinnerToCharacterSearchResults();
+        });
+
+        function loadSpinnerToCharacterSearchResults() {
+            $('#characterSearchResults').empty().load('/Home/_Spinner');
+            $('#characterSearchResults').show();
+        }
+
+        function showCharacterSearchResults() {
+            $('#characterSearchResults').show();
+        }
+
+        function clearCharacterSearchResults() {
+            $('#characterSearchResults').empty();
+            $('#characterSearchResults').hide();
+        }
+    </script>
+
+    @*submits and loads comic results by character selection and applies search options *@
+    <script>
+        var pageNumber = 1;
+
+        $(document).on('click', '.character-option', function () {
+            characterId = $(this).data('character-id');
+            $('#characterSearchResults').empty().hide();
+            $('#comicSearchOptions').show();
+            loadSpinnerToComicSearchResults();
+            resetResults(); // Load initial comics
+        });
+
+        $('#loadMore').click(function () {
+            loadComics(characterId); // Load more comics on button click
+        });
+
+        $(document).ready(function () {
+            $("#orderBy").change(function () {
+                resetResults();
+            });
+            $("#pageSize").change(function () {
+                resetResults();
+            });
+            $("#filterBySubmit").click(function () {
+                resetResults();
+            });
+        });
+
+        function resetResults() {
+            if (characterId > 0) {
+                $('#comicSearchResults').empty();
+                pageNumber = 1;
+                loadComics(characterId);
+            }
+        }        
+
+        function loadComics(characterId) {
+            var orderBy = $("#orderBy").val();
+            var pageSize = $("#pageSize").val();
+            var filterBy = $("#filterBy").val();
+
+            $('#comicSearchResultsSpinner').show();
+            $.ajax({
+                url: '@Url.Action("GetComicSearchResults", "Home")',
+                data: {
+                    characterId: characterId,
+                    PageNumber: pageNumber,
+                    PageSize: pageSize,
+                    FilterBy: filterBy,
+                    OrderBy: orderBy
+                },
+                success: function (data) {
+                    $('#characterSearchResults').empty().hide();
+                    $('#comicSearchResults').append(data);
+
+                    @*
+                        Last page control could be done buy gettıng total data count from api
+                        I chose this approach for simplicity but in this approach if last page has
+                        same data count with page size, one extra api call will be made to confirm
+                        it's the last page, and this could be crucial when api has access limits
+                    *@
+                    var dataLength = $('.card').length; // used for quick sloution for data length to get item count in partial
+                    var totalCount = pageNumber * pageSize
+                    if (dataLength < totalCount) // checks if it's the last page
+                    {
+                        $('#loadMore').hide();
+                    }
+                    else {
+                        $('#loadMore').show();
+                    }
+
+                    pageNumber++;
+                },
+                complete: function () {
+                    // Hide the loading spinner regardless of success or error
+                    $('#comicSearchResultsSpinner').hide();
+                }
+            });
+        };
+
+        function loadSpinnerToComicSearchResults() {
+            $('#comicSearchResultsSpinner').empty().load('/Home/_Spinner');
+            $('#comicSearchResultsSpinner').show();
+        }
+    </script>
+}

@@ -1,0 +1,11 @@
+﻿@model IEnumerable<MarvelComics.Core.Models.CharacterDTO>
+
+@if (Model != null)
+{
+    foreach (var item in Model)
+    {
+        <a href="#" class="dropdown-item character-option" data-character-id="@item.Id">
+            @item.Name
+        </a>
+    }
+}
